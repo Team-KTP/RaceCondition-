@@ -3,6 +3,9 @@ package org.kwakmunsu.stock.service;
 import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -18,7 +21,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 class StockServiceTest {
 
     @Autowired
-    StockService stockService;
+    PessimisticLockStockService stockService;
 
     @Autowired
     StockRepository stockRepository;
@@ -41,6 +44,29 @@ class StockServiceTest {
         Stock stock = stockRepository.findById(1L).orElseThrow();
 
         assertThat(stock.getQuantity()).isEqualTo(99L);
+    }
+    
+    @DisplayName("동시에 재고 감소 요청이 100가 들어온다.")
+    @Test
+    void decrease2() throws InterruptedException {
+        int threadCount = 100;
+
+        ExecutorService executorService = Executors.newFixedThreadPool(32);
+        CountDownLatch latch = new CountDownLatch(threadCount);
+        for (int i = 0; i < threadCount; i++) {
+            executorService.submit(() -> {
+                try {
+                    stockService.decrease(1L, 1L);
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+        latch.await();
+
+        Stock stock = stockRepository.findById(1L).orElseThrow();
+
+        assertThat(stock.getQuantity()).isZero();
     }
 
 }
